@@ -1,171 +1,165 @@
-public class Interpreter {
-    private SystemCallHandler sysCall;
-    private Memory memory;
-    private MutexManager mutexManager;
 
-    public Interpreter(SystemCallHandler sysCall, Memory memory, MutexManager mutexManager) {
-        this.sysCall = sysCall;
+@SuppressWarnings("FieldMayBeFinal")
+
+public class Interpreter {
+
+    private Memory memory;
+    private SystemCalls sysCalls;
+    private Mutexes mutexes;
+    @SuppressWarnings("unused")
+    private Scheduler scheduler;
+
+    public Interpreter(Memory memory, SystemCalls sysCalls, Mutexes mutexes, Scheduler scheduler) {
         this.memory = memory;
-        this.mutexManager = mutexManager;
+        this.sysCalls = sysCalls;
+        this.mutexes = mutexes;
+        this.scheduler = scheduler;
     }
 
     /**
      * Execute one instruction for a process.
-     * Returns: "OK", "BLOCKED", or "TERMINATED"
+     * Returns: "OK", "BLOCKED", "UNBLOCKED:pid", or "TERMINATED"
      */
-    public String execute(PCB pcb) {
-        int pc = pcb.getProgramCounter();
-        int pid = pcb.getProcessID();
-        int memStart = pcb.getMemStart();
-        int memEnd = pcb.getMemEnd();
+    public String execute(int pid) {
+        int pc = memory.getProcessPC().get(pid);
+        String instruction = memory.getInstruction(pid, pc);
 
-        String instruction = memory.getInstruction(memStart, pid, pc);
-
-        if (instruction == null) {
-            return "TERMINATED";
-        }
+        if (instruction == null) return "TERMINATED";
 
         System.out.println("  Executing: [P" + pid + "] Instruction " + pc + ": " + instruction);
 
         String[] parts = instruction.split(" ", 3);
-        String command = parts[0];
+        String cmd = parts[0];
 
-        switch (command) {
-            case "assign":
-                return executeAssign(parts, pcb);
-            case "print":
-                return executePrint(parts, pcb);
-            case "writeFile":
-                return executeWriteFile(parts, pcb);
-            case "readFile":
-                return executeReadFile(parts, pcb);
-            case "printFromTo":
-                return executePrintFromTo(parts, pcb);
-            case "semWait":
-                return executeSemWait(parts, pcb);
-            case "semSignal":
-                return executeSemSignal(parts, pcb);
-            default:
-                System.out.println("  [Interpreter] Unknown command: " + command);
-                pcb.setProgramCounter(pc + 1);
-                memory.updatePCBProgramCounter(memStart, pid, pc + 1);
+        switch (cmd) {
+            case "assign" -> {
+                return doAssign(pid, parts);
+            }
+            case "print" -> {
+                return doPrint(pid, parts);
+            }
+            case "writeFile" -> {
+                return doWriteFile(pid, parts);
+            }
+            case "readFile" -> {
+                return doReadFile(pid, parts);
+            }
+            case "printFromTo" -> {
+                return doPrintFromTo(pid, parts);
+            }
+            case "semWait" -> {
+                return doSemWait(pid, parts);
+            }
+            case "semSignal" -> {
+                return doSemSignal(pid, parts);
+            }
+            default -> {
+                System.out.println("  Unknown command: " + cmd);
+                advancePC(pid);
                 return "OK";
+            }
         }
     }
 
-    private String executeAssign(String[] parts, PCB pcb) {
-        int pid = pcb.getProcessID();
-        int memStart = pcb.getMemStart();
-        int memEnd = pcb.getMemEnd();
+    private void advancePC(int pid) {
+        int pc = memory.getProcessPC().get(pid);
+        memory.getProcessPC().put(pid, pc + 1);
+        memory.updatePCB(pid);
+    }
 
+    // ========== ASSIGN ==========
+
+    private String doAssign(int pid, String[] parts) {
         String varName = parts[1];
         String value;
 
         if (parts.length > 2 && parts[2].equals("input")) {
-            value = sysCall.takeInput();
+            value = sysCalls.input();
         } else {
             value = parts.length > 2 ? parts[2] : "";
         }
 
-        sysCall.writeToMemory(memStart, memEnd, varName, value, pid);
-
-        pcb.setProgramCounter(pcb.getProgramCounter() + 1);
-        memory.updatePCBProgramCounter(memStart, pid, pcb.getProgramCounter());
+        sysCalls.writeMem(pid, varName, value);
+        advancePC(pid);
         return "OK";
     }
 
-    private String executePrint(String[] parts, PCB pcb) {
-        int pid = pcb.getProcessID();
-        String varName = parts[1];
-        String value = sysCall.readFromMemory(pcb.getMemStart(), pcb.getMemEnd(), varName, pid);
-        sysCall.printToScreen(value != null ? value : varName);
+    // ========== PRINT ==========
 
-        pcb.setProgramCounter(pcb.getProgramCounter() + 1);
-        memory.updatePCBProgramCounter(pcb.getMemStart(), pid, pcb.getProgramCounter());
+    private String doPrint(int pid, String[] parts) {
+        String val = sysCalls.readMem(pid, parts[1]);
+        sysCalls.print(val != null ? val : parts[1]);
+        advancePC(pid);
         return "OK";
     }
 
-    private String executeWriteFile(String[] parts, PCB pcb) {
-        int pid = pcb.getProcessID();
-        String fileVarName = parts[1];
-        String dataVarName = parts.length > 2 ? parts[2] : "";
+    // ========== WRITE FILE ==========
 
-        String filename = sysCall.readFromMemory(pcb.getMemStart(), pcb.getMemEnd(), fileVarName, pid);
-        String data = sysCall.readFromMemory(pcb.getMemStart(), pcb.getMemEnd(), dataVarName, pid);
-
+    private String doWriteFile(int pid, String[] parts) {
+        String filename = sysCalls.readMem(pid, parts[1]);
+        String data = parts.length > 2 ? sysCalls.readMem(pid, parts[2]) : "";
         if (filename != null && data != null) {
-            sysCall.writeFile(filename, data);
+            sysCalls.writeFile(filename, data);
         }
-
-        pcb.setProgramCounter(pcb.getProgramCounter() + 1);
-        memory.updatePCBProgramCounter(pcb.getMemStart(), pid, pcb.getProgramCounter());
+        advancePC(pid);
         return "OK";
     }
 
-    private String executeReadFile(String[] parts, PCB pcb) {
-        int pid = pcb.getProcessID();
-        String fileVarName = parts[1];
+    // ========== READ FILE ==========
 
-        String filename = sysCall.readFromMemory(pcb.getMemStart(), pcb.getMemEnd(), fileVarName, pid);
+    private String doReadFile(int pid, String[] parts) {
+        String filename = sysCalls.readMem(pid, parts[1]);
         if (filename != null) {
-            String content = sysCall.readFile(filename);
-            // Overwrite the variable with the file content
-            // so "print a" will print the file contents, not the filename
-            sysCall.writeToMemory(pcb.getMemStart(), pcb.getMemEnd(), fileVarName, content, pid);
+            String content = sysCalls.readFile(filename);
+            // Store file content back into the variable
+            sysCalls.writeMem(pid, parts[1], content);
         }
-
-        pcb.setProgramCounter(pcb.getProgramCounter() + 1);
-        memory.updatePCBProgramCounter(pcb.getMemStart(), pid, pcb.getProgramCounter());
+        advancePC(pid);
         return "OK";
     }
 
-    private String executePrintFromTo(String[] parts, PCB pcb) {
-        int pid = pcb.getProcessID();
-        String var1 = parts[1];
-        String var2 = parts.length > 2 ? parts[2] : "";
+    // ========== PRINT FROM TO ==========
 
-        String val1 = sysCall.readFromMemory(pcb.getMemStart(), pcb.getMemEnd(), var1, pid);
-        String val2 = sysCall.readFromMemory(pcb.getMemStart(), pcb.getMemEnd(), var2, pid);
-
+    private String doPrintFromTo(int pid, String[] parts) {
+        String val1 = sysCalls.readMem(pid, parts[1]);
+        String val2 = parts.length > 2 ? sysCalls.readMem(pid, parts[2]) : "0";
         try {
             int from = Integer.parseInt(val1);
             int to = Integer.parseInt(val2);
             for (int i = from; i <= to; i++) {
-                sysCall.printToScreen(String.valueOf(i));
+                sysCalls.print(String.valueOf(i));
             }
         } catch (NumberFormatException e) {
-            System.out.println("  [Interpreter] printFromTo error: non-integer values");
+            System.out.println("  Error: printFromTo needs integers");
         }
-
-        pcb.setProgramCounter(pcb.getProgramCounter() + 1);
-        memory.updatePCBProgramCounter(pcb.getMemStart(), pid, pcb.getProgramCounter());
+        advancePC(pid);
         return "OK";
     }
 
-    private String executeSemWait(String[] parts, PCB pcb) {
+    // ========== SEM WAIT ==========
+
+    private String doSemWait(int pid, String[] parts) {
         String resource = parts[1];
-        boolean acquired = mutexManager.semWait(resource, pcb.getProcessID());
+        boolean acquired = mutexes.semWait(resource, pid);
 
         if (acquired) {
-            pcb.setProgramCounter(pcb.getProgramCounter() + 1);
-            memory.updatePCBProgramCounter(pcb.getMemStart(), pcb.getProcessID(), pcb.getProgramCounter());
+            advancePC(pid);
             return "OK";
         } else {
-            // Process is blocked — do NOT advance PC, it will retry semWait when unblocked
-            pcb.setProcessState("BLOCKED");
-            memory.updatePCBState(pcb.getMemStart(), pcb.getProcessID(), "BLOCKED");
+            // Process is blocked — do NOT advance PC
+            memory.getProcessState().put(pid, "BLOCKED");
+            memory.updatePCB(pid);
             return "BLOCKED";
         }
     }
 
-    private String executeSemSignal(String[] parts, PCB pcb) {
+    // ========== SEM SIGNAL ==========
+
+    private String doSemSignal(int pid, String[] parts) {
         String resource = parts[1];
-        int unblockedPID = mutexManager.semSignal(resource, pcb.getProcessID());
+        int unblockedPID = mutexes.semSignal(resource, pid);
+        advancePC(pid);
 
-        pcb.setProgramCounter(pcb.getProgramCounter() + 1);
-        memory.updatePCBProgramCounter(pcb.getMemStart(), pcb.getProcessID(), pcb.getProgramCounter());
-
-        // Return the unblocked PID info (OS will handle moving it to ready queue)
         if (unblockedPID != -1) {
             return "UNBLOCKED:" + unblockedPID;
         }

@@ -1,11 +1,12 @@
 import java.io.*;
 import java.util.Scanner;
+@SuppressWarnings("FieldMayBeFinal")
+public class SystemCalls {
 
-public class SystemCallHandler {
     private Memory memory;
     private Scanner scanner;
 
-    public SystemCallHandler(Memory memory) {
+    public SystemCalls(Memory memory) {
         this.memory = memory;
         this.scanner = new Scanner(System.in);
     }
@@ -22,7 +23,6 @@ public class SystemCallHandler {
             }
         } catch (IOException e) {
             System.out.println("  [SysCall] Error reading file: " + e.getMessage());
-            return "";
         }
         return content.toString();
     }
@@ -38,25 +38,24 @@ public class SystemCallHandler {
     }
 
     // System Call 3: Print to screen
-    public void printToScreen(String data) {
+    public void print(String data) {
         System.out.println("  [OUTPUT] " + data);
     }
 
     // System Call 4: Take input from user
-    public String takeInput() {
+    public String input() {
         System.out.println("  [OUTPUT] Please enter a value:");
         System.out.print("  [INPUT] > ");
-        String input = scanner.nextLine().trim();
-        return input;
+        return scanner.nextLine().trim();
     }
 
     // System Call 5: Read from memory
-    public String readFromMemory(int memStart, int memEnd, String varName, int processID) {
-        return memory.readVariable(memStart, memEnd, varName, processID);
+    public String readMem(int pid, String varName) {
+        return memory.readVar(pid, varName);
     }
 
     // System Call 6: Write to memory
-    public boolean writeToMemory(int memStart, int memEnd, String varName, String value, int processID) {
-        return memory.writeVariable(memStart, memEnd, varName, value, processID);
+    public void writeMem(int pid, String varName, String value) {
+        memory.writeVar(pid, varName, value);
     }
 }
