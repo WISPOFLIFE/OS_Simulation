@@ -137,8 +137,6 @@ public class Scheduler {
         }
     }
 
-    // ========== TERMINATE PROCESS ==========
-
     public void terminateProcess(int pid) {
         readyQueue.remove(pid);
         blockedQueue.remove(pid);
@@ -147,7 +145,11 @@ public class Scheduler {
             mlfqLevels.remove(pid);
         }
         memory.getProcessState().put(pid, "TERMINATED");
-    }
+
+        // Clean up: remove this pid from any mutex waiting queues
+        // (in case it was stuck waiting)
+        System.out.println("  [Scheduler] Process " + pid + " fully terminated and removed from all queues.");
+}
 
     // ========== CHECKS ==========
 

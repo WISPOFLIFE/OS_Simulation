@@ -274,7 +274,6 @@ public class Memory {
         System.out.println("  [Memory] Error: No variable slot for P" + pid);
     }
 
-    // ========== INSTRUCTION ACCESS ==========
 
     public String getInstruction(int pid, int pc) {
         int[] bounds = processBounds.get(pid);
@@ -291,8 +290,6 @@ public class Memory {
         return processInstructions.get(pid).size();
     }
 
-    // ========== UPDATE PCB IN MEMORY ==========
-
     public void updatePCB(int pid) {
         if (!processInMemory.get(pid)) return;
         int[] bounds = processBounds.get(pid);
@@ -300,17 +297,18 @@ public class Memory {
         memory[bounds[0] + 2][1] = String.valueOf(processPC.get(pid));
     }
 
-    // ========== CHECK ALL TERMINATED ==========
+
 
     public boolean allTerminated() {
         if (processState.isEmpty()) return false;
-        for (String state : processState.values()) {
-            if (!"TERMINATED".equals(state)) return false;
+        for (Map.Entry<Integer, String> entry : processState.entrySet()) {
+            String state = entry.getValue();
+            if (!state.equals("TERMINATED")) {
+                return false;
+            }
         }
         return true;
     }
-
-    // ========== PRINT MEMORY ==========
 
     public void printMemory(int clock) {
         System.out.println("\n=== Memory State at Clock Cycle " + clock + " ===");

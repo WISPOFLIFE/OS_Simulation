@@ -14,12 +14,11 @@ public class Main {
 
     public static void main(String[] args) {
 
-        // ===== CONFIGURABLE — change for evaluation =====
         String algorithm = "RR";    // "RR", "HRRN", or "MLFQ"
-        int timeSlice = 2;          // instructions per time slice
+        int timeSlice = 2;        
         int memorySize = 40;
 
-        // ===== INITIALIZE COMPONENTS =====
+
         memory = new Memory(memorySize);
         sysCalls = new SystemCalls(memory);
         mutexes = new Mutexes();
@@ -42,8 +41,26 @@ public class Main {
                 + "  |  Time Slice: " + scheduler.getTimeSlice() + "              ║");
         System.out.println("╚══════════════════════════════════════════════════╝\n");
 
-        while (!memory.allTerminated() || !arrivals.isEmpty()) {
+        while (true) {
             int clock = scheduler.getClock();
+
+            // CHECK: all done?
+            if (arrivals.isEmpty() && memory.allTerminated()) {
+                break;
+            }
+
+            // CHECK: nothing left to do but not all terminated = stuck
+            if (arrivals.isEmpty()
+                    && !scheduler.hasReadyProcesses()
+                    && scheduler.getBlockedQueue().isEmpty()
+                    && !memory.getProcessState().isEmpty()) {
+                System.out.println("\n  [OS] No more work to do.");
+                // Print which processes are NOT terminated (debug)
+                for (Map.Entry<Integer, String> entry : memory.getProcessState().entrySet()) {
+                    System.out.println("  Process " + entry.getKey() + " -> " + entry.getValue());
+                }
+                break;
+            }
 
             System.out.println("========================================");
             System.out.println("         CLOCK CYCLE: " + clock);
@@ -56,15 +73,13 @@ public class Main {
                 if (pid != -1) executeProcess(pid);
             } else if (!scheduler.getBlockedQueue().isEmpty()) {
                 System.out.println("  All processes are blocked. Waiting...");
+            } else if (arrivals.isEmpty()) {
+                // No ready, no blocked, no arrivals — skip
+                System.out.println("  No processes to execute.");
             }
 
             memory.printMemory(clock);
             scheduler.incrementClock();
-
-            if (clock > 200) {
-                System.out.println("  [OS] Max clock cycles reached.");
-                break;
-            }
         }
 
         System.out.println("\n╔══════════════════════════════════════════════════╗");
